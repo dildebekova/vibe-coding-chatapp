@@ -1,5 +1,6 @@
-import { ArrowLeft, MoreHorizontal, Phone, Video } from 'lucide-react'
+import { ArrowLeft, Copy, Maximize2, RefreshCw } from 'lucide-react'
 import { useEffect, useRef } from 'react'
+import { toast } from 'sonner'
 
 import type { ApiMessage } from '../services/chatApi'
 import { displayName, formatLastSeen } from '../hooks/useChat'
@@ -19,6 +20,7 @@ type Props = {
   canSend: boolean
   wsDisconnected?: boolean
   onBack?: () => void
+  onRefresh?: () => void
 }
 
 export function ChatWindow({
@@ -32,6 +34,7 @@ export function ChatWindow({
   canSend,
   wsDisconnected,
   onBack,
+  onRefresh,
 }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -61,6 +64,32 @@ export function ChatWindow({
   const peerName = displayName(peer)
   const statusLine = peerOnline ? 'Online' : `Last seen ${formatLastSeen(peerLastLogin ?? null)}`
 
+  const scrollToLatest = () => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    toast.success('Jumped to latest message')
+  }
+
+  const startFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen()
+      } else {
+        await document.exitFullscreen()
+      }
+    } catch {
+      toast.error('Fullscreen is not available')
+    }
+  }
+
+  const copyUsername = async () => {
+    try {
+      await navigator.clipboard.writeText(`@${peer.username}`)
+      toast.success('Username copied')
+    } catch {
+      toast.error('Could not copy username')
+    }
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[#141722]">
       <header className="flex shrink-0 items-center gap-3 border-b border-[#2a2f3f] bg-[#1a1d29]/90 px-3 py-3 backdrop-blur md:px-5">
@@ -81,23 +110,32 @@ export function ChatWindow({
         <div className="hidden items-center gap-1 sm:flex">
           <button
             type="button"
+            onClick={copyUsername}
             className="rounded-full p-2.5 text-[#8b92a8] transition hover:bg-white/5 hover:text-white"
-            title="Call"
+            title="Copy @username"
           >
-            <Phone className="h-5 w-5" />
+            <Copy className="h-5 w-5" />
           </button>
           <button
             type="button"
+            onClick={() => {
+              void startFullscreen()
+            }}
             className="rounded-full p-2.5 text-[#8b92a8] transition hover:bg-white/5 hover:text-white"
-            title="Video"
+            title="Toggle fullscreen"
           >
-            <Video className="h-5 w-5" />
+            <Maximize2 className="h-5 w-5" />
           </button>
           <button
             type="button"
+            onClick={() => {
+              onRefresh?.()
+              scrollToLatest()
+            }}
             className="rounded-full p-2.5 text-[#8b92a8] transition hover:bg-white/5 hover:text-white"
+            title="Refresh and jump to latest"
           >
-            <MoreHorizontal className="h-5 w-5" />
+            <RefreshCw className="h-5 w-5" />
           </button>
         </div>
       </header>

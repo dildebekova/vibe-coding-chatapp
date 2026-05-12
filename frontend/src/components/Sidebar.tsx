@@ -7,12 +7,8 @@ import type { AuthUser } from '../services/auth'
 import type { ContactUser, DirectChat } from '../services/chatApi'
 import { Avatar } from './Avatar'
 
-type Tab = 'direct' | 'group' | 'public'
-
 type Props = {
   user: AuthUser
-  tab: Tab
-  onTab: (t: Tab) => void
   search: string
   onSearch: (s: string) => void
   chats: DirectChat[]
@@ -26,8 +22,6 @@ type Props = {
 
 export function Sidebar({
   user,
-  tab,
-  onTab,
   search,
   onSearch,
   chats,
@@ -51,23 +45,12 @@ export function Sidebar({
   }, [chats, search, user.user_guid])
 
   const filteredContacts = useMemo(() => {
+    const ownGuid = user.user_guid
+    const withoutSelf = contacts.filter((c) => c.guid !== ownGuid)
     const q = search.trim().toLowerCase()
-    if (!q) return contacts
-    return contacts.filter((c) => displayName(c).toLowerCase().includes(q) || c.username.toLowerCase().includes(q))
-  }, [contacts, search])
-
-  const tabBtn = (t: Tab, label: string) => (
-    <button
-      type="button"
-      onClick={() => onTab(t)}
-      className={clsx(
-        'flex-1 rounded-lg py-2 text-xs font-medium transition',
-        tab === t ? 'bg-[#5d87ff] text-white shadow-md shadow-[#5d87ff]/20' : 'text-[#8b92a8] hover:bg-white/5 hover:text-white',
-      )}
-    >
-      {label}
-    </button>
-  )
+    if (!q) return withoutSelf
+    return withoutSelf.filter((c) => displayName(c).toLowerCase().includes(q) || c.username.toLowerCase().includes(q))
+  }, [contacts, search, user.user_guid])
 
   return (
     <aside className="flex h-full min-h-0 w-full flex-col border-r border-[#2a2f3f] bg-[#1a1d29] md:max-w-[20rem] md:shrink-0">
@@ -75,12 +58,25 @@ export function Sidebar({
         <div className="flex items-center gap-1">
           <button
             type="button"
-            className="rounded-xl p-2.5 text-[#5d87ff] bg-[#5d87ff]/10"
+            onClick={() => {
+              setNewOpen(false)
+            }}
+            className={clsx(
+              'rounded-xl p-2.5 transition',
+              'bg-[#5d87ff]/10 text-[#5d87ff]',
+            )}
             title="Chats"
           >
             <MessageCircle className="h-5 w-5" />
           </button>
-          <button type="button" className="rounded-xl p-2.5 text-[#8b92a8] hover:bg-white/5 hover:text-white" title="Mail">
+          <button
+            type="button"
+            onClick={() => {
+              setNewOpen(true)
+            }}
+            className="rounded-xl p-2.5 text-[#8b92a8] transition hover:bg-white/5 hover:text-white"
+            title="New message"
+          >
             <Mail className="h-5 w-5" />
           </button>
         </div>
@@ -106,12 +102,6 @@ export function Sidebar({
         >
           <Plus className="h-5 w-5" />
         </button>
-      </div>
-
-      <div className="mt-3 flex gap-1 px-3">
-        {tabBtn('direct', 'Direct')}
-        {tabBtn('group', 'Group')}
-        {tabBtn('public', 'Public')}
       </div>
 
       <div className="mt-3 px-3">
@@ -155,16 +145,7 @@ export function Sidebar({
           </div>
         )}
 
-        {tab !== 'direct' && (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <p className="text-sm font-medium text-white/80">Coming soon</p>
-            <p className="mt-1 max-w-[12rem] text-xs text-[#8b92a8]">
-              {tab === 'group' ? 'Group channels' : 'Public rooms'} will appear here.
-            </p>
-          </div>
-        )}
-
-        {tab === 'direct' && loading && (
+        {loading && (
           <div className="space-y-2 p-2">
             {[1, 2, 3, 4].map((i) => (
               <div key={i} className="h-16 animate-pulse rounded-2xl bg-[#222635]" />
@@ -172,12 +153,11 @@ export function Sidebar({
           </div>
         )}
 
-        {tab === 'direct' && !loading && filteredChats.length === 0 && !newOpen && (
+        {!loading && filteredChats.length === 0 && !newOpen && (
           <p className="px-2 py-8 text-center text-sm text-[#8b92a8]">No direct chats yet. Start one with +</p>
         )}
 
-        {tab === 'direct' &&
-          !loading &&
+        {!loading &&
           filteredChats.map((chat) => {
             const peer = getPeerUser(chat, user.user_guid)
             if (!peer) return null

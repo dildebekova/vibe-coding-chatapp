@@ -20,6 +20,11 @@ type Props = {
 }
 
 export function MessageBubble({ message, isMine, peerName, peerImage, myName, myImage }: Props) {
+  const isInlineImage = /^data:image\/[a-zA-Z0-9+.-]+;base64,/.test(message.content)
+  const fileMatch = message.content.match(/^\[file:([^\]]+)\](data:[\s\S]+)$/)
+  const fileName = fileMatch ? decodeURIComponent(fileMatch[1]) : ''
+  const fileDataUrl = fileMatch ? fileMatch[2] : ''
+
   return (
     <div
       className={clsx(
@@ -41,7 +46,19 @@ export function MessageBubble({ message, isMine, peerName, peerImage, myName, my
               : 'rounded-tl-sm bg-[#2a3142] text-[#e8eaf0] ring-1 ring-white/5',
           )}
         >
-          <p className="whitespace-pre-wrap break-words">{message.content}</p>
+          {isInlineImage ? (
+            <img src={message.content} alt="sent image" className="max-h-72 max-w-full rounded-xl object-contain" />
+          ) : fileMatch ? (
+            <a
+              href={fileDataUrl}
+              download={fileName || 'file'}
+              className="inline-flex max-w-full items-center gap-2 rounded-lg bg-black/20 px-3 py-2 text-white underline underline-offset-2"
+            >
+              <span className="truncate">File: {fileName || 'download'}</span>
+            </a>
+          ) : (
+            <p className="whitespace-pre-wrap break-words">{message.content}</p>
+          )}
         </div>
       </div>
     </div>

@@ -42,7 +42,6 @@ export default function ChatPage() {
   const { user, logout } = useAuth()
   if (!user) return null
 
-  const [tab, setTab] = useState<'direct' | 'group' | 'public'>('direct')
   const [search, setSearch] = useState('')
   const [chats, setChats] = useState<DirectChat[]>([])
   const [contacts, setContacts] = useState<ContactUser[]>([])
@@ -51,6 +50,11 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<ApiMessage[]>([])
   const [msgLoading, setMsgLoading] = useState(false)
   const [presence, setPresence] = useState<Record<string, 'online' | 'offline' | 'inactive'>>({})
+
+  const findChatWithUser = useCallback(
+    (userGuid: string, list: DirectChat[] = chats) => list.find((c) => c.users.some((u) => u.guid === userGuid)),
+    [chats],
+  )
 
   const reloadLists = useCallback(async () => {
     const [dc, cont] = await Promise.all([fetchDirectChats(), fetchContacts()])
@@ -129,44 +133,50 @@ export default function ChatPage() {
   useEffect(() => {
     if (!selectedChatGuid || connected) return
     const id = window.setInterval(() => {
-      fetchMessages(selectedChatGuid)
-        .then((r) => {
-          setMessages((prev) => mergeMessages(prev, r.messages))
-        })
-        .catch(() => {})
+      fetchMessages(selectedChatGuid).then((r) => setMessages((prev) => mergeMessages(prev, r.messages))).catch(() => {})
     }, 2800)
     return () => clearInterval(id)
   }, [selectedChatGuid, connected])
 
   const openOrCreateWithUser = async (userGuid: string) => {
-    // Temporary diagnostics to surface silent failures in UI (remove once stable).
-    console.debug('[chat] openOrCreateWithUser', { userGuid })
-    const hit = chats.find((c) => c.users.some((u) => u.guid === userGuid))
+    if (userGuid === user.user_guid) {
+      toast.error('You cannot create a chat with yourself')
+      return
+    }
+    const hit = findChatWithUser(userGuid)
     if (hit) {
-      console.debug('[chat] opening existing (in-state) chat', { chatGuid: hit.chat_guid })
       setSelectedChatGuid(hit.chat_guid)
       return
     }
     try {
       const { guid } = await createDirectChat(userGuid)
-      console.debug('[chat] created chat', { guid })
       await reloadLists()
-      console.debug('[chat] reloaded lists after create')
       setSelectedChatGuid(guid)
     } catch (e) {
       if (axios.isAxiosError(e) && e.response?.status === 409) {
-        console.debug('[chat] create returned 409, refetching chats')
         const dc = await fetchDirectChats()
         setChats(dc.chats)
-        const found = dc.chats.find((c) => c.users.some((u) => u.guid === userGuid))
+        const found = findChatWithUser(userGuid, dc.chats)
         if (found) {
-          console.debug('[chat] found existing chat after 409', { chatGuid: found.chat_guid })
           setSelectedChatGuid(found.chat_guid)
           toast.info('Opening existing conversation')
         }
+      } else if (axios.isAxiosError(e) && e.response?.status === 404) {
+        toast.error('User not found')
       } else {
-        console.error('[chat] createDirectChat failed', e)
-        toast.error('Could not start chat')
+        try {
+          const dc = await fetchDirectChats()
+          setChats(dc.chats)
+          const found = findChatWithUser(userGuid, dc.chats)
+          if (found) {
+            setSelectedChatGuid(found.chat_guid)
+            toast.info('Opening existing conversation')
+            return
+          }
+        } catch {
+          // Ignore fallback fetch errors and surface generic message below.
+        }
+        toast.error('Could not start chat. Please try again.')
       }
     }
   }
@@ -179,6 +189,17 @@ export default function ChatPage() {
   const peerMeta = peer ? contacts.find((c) => c.guid === peer.guid) : undefined
 
   const peerOnline = peer ? presence[peer.guid] === 'online' : false
+
+  const refreshSelectedChat = useCallback(() => {
+    if (!selectedChatGuid) return
+    void fetchMessages(selectedChatGuid)
+      .then((r) => {
+        setMessages((prev) => mergeMessages(prev, r.messages))
+      })
+      .catch(() => {
+        toast.error('Could not refresh messages')
+      })
+  }, [selectedChatGuid])
 
   const onSend = (text: string) => {
     if (!selectedChatGuid) return
@@ -234,8 +255,6 @@ export default function ChatPage() {
       >
         <Sidebar
           user={user}
-          tab={tab}
-          onTab={setTab}
           search={search}
           onSearch={setSearch}
           chats={chats}
@@ -268,6 +287,7 @@ export default function ChatPage() {
           canSend={Boolean(selectedChatGuid && connected)}
           onBack={() => setSelectedChatGuid(null)}
           wsDisconnected={Boolean(selectedChatGuid && !connected)}
+          onRefresh={refreshSelectedChat}
         />
       </div>
     </div>
