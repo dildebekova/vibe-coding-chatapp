@@ -1,4 +1,4 @@
-from pydantic import UUID4, BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import UUID4, AliasChoices, BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from src.config import settings
 
@@ -10,7 +10,8 @@ class GoogleLoginSchema(BaseModel):
 class UserLoginResponseSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
-    guid: UUID4 = Field(..., serialization_alias="user_guid")
+    # ORM uses `.guid`; API contract uses `user_guid`.
+    guid: UUID4 = Field(..., validation_alias=AliasChoices("guid", "user_guid"), serialization_alias="user_guid")
     username: str
     email: EmailStr
     first_name: str

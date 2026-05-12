@@ -139,25 +139,33 @@ export default function ChatPage() {
   }, [selectedChatGuid, connected])
 
   const openOrCreateWithUser = async (userGuid: string) => {
+    // Temporary diagnostics to surface silent failures in UI (remove once stable).
+    console.debug('[chat] openOrCreateWithUser', { userGuid })
     const hit = chats.find((c) => c.users.some((u) => u.guid === userGuid))
     if (hit) {
+      console.debug('[chat] opening existing (in-state) chat', { chatGuid: hit.chat_guid })
       setSelectedChatGuid(hit.chat_guid)
       return
     }
     try {
       const { guid } = await createDirectChat(userGuid)
+      console.debug('[chat] created chat', { guid })
       await reloadLists()
+      console.debug('[chat] reloaded lists after create')
       setSelectedChatGuid(guid)
     } catch (e) {
       if (axios.isAxiosError(e) && e.response?.status === 409) {
+        console.debug('[chat] create returned 409, refetching chats')
         const dc = await fetchDirectChats()
         setChats(dc.chats)
         const found = dc.chats.find((c) => c.users.some((u) => u.guid === userGuid))
         if (found) {
+          console.debug('[chat] found existing chat after 409', { chatGuid: found.chat_guid })
           setSelectedChatGuid(found.chat_guid)
           toast.info('Opening existing conversation')
         }
       } else {
+        console.error('[chat] createDirectChat failed', e)
         toast.error('Could not start chat')
       }
     }
@@ -174,12 +182,45 @@ export default function ChatPage() {
 
   const onSend = (text: string) => {
     if (!selectedChatGuid) return
+    if (!connected) {
+      toast.error('Not connected (WebSocket). Try again in a moment.')
+      return
+    }
+
+    // Optimistic append so user immediately sees the message,
+    // then reconcile with the backend via HTTP.
+    const tempGuid =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? `client-${crypto.randomUUID()}`
+        : `client-${Math.random().toString(16).slice(2)}`
+    const nowIso = new Date().toISOString()
+    setMessages((prev) =>
+      mergeMessages(prev, [
+        {
+          message_guid: tempGuid,
+          user_guid: user.user_guid,
+          chat_guid: selectedChatGuid,
+          content: text,
+          created_at: nowIso,
+          is_read: true,
+        },
+      ]),
+    )
+
     send({
       type: 'new_message',
       user_guid: user.user_guid,
       chat_guid: selectedChatGuid,
       content: text,
     })
+
+    window.setTimeout(() => {
+      fetchMessages(selectedChatGuid)
+        .then((r) => {
+          setMessages((prev) => mergeMessages(prev, r.messages))
+        })
+        .catch(() => {})
+    }, 500)
   }
 
   return (

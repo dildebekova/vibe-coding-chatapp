@@ -54,8 +54,12 @@ export async function fetchDirectChats(): Promise<DirectChatsResponse> {
 }
 
 export async function fetchContacts(): Promise<ContactUser[]> {
-  const { data } = await api.get<ContactUser[]>('/users/')
-  return data
+  const { data } = await api.get<ContactUser[] | { root: ContactUser[] }>('/users/')
+  if (Array.isArray(data)) return data
+  if (data && typeof data === 'object' && Array.isArray((data as { root?: unknown }).root)) {
+    return (data as { root: ContactUser[] }).root
+  }
+  return []
 }
 
 export async function fetchMessages(chatGuid: string, size = 50): Promise<MessagesResponse> {

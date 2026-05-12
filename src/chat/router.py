@@ -43,6 +43,8 @@ async def create_direct_chat_view(
     create_direct_chat_schema: CreateDirectChatSchema,
     db_session: AsyncSession = Depends(get_async_session),
     current_user: User = Depends(get_current_user),
+    cache: aioredis.Redis = Depends(get_cache),
+    cache_enabled: bool = Depends(get_cache_setting),
 ):
     # check if another user (recipient) exists
     recipient_user_guid = create_direct_chat_schema.recipient_user_guid
@@ -62,6 +64,12 @@ async def create_direct_chat_view(
 
     # Check if the data is already in the cache
     chat: Chat = await create_direct_chat(db_session, initiator_user=current_user, recipient_user=recipient_user)
+
+    # Ensure the new chat appears immediately in `/chats/direct/` for both users.
+    if cache_enabled:
+        # `chat.users` should be available, but clear by explicit users too.
+        await clear_cache_for_get_direct_chats(cache=cache, user=current_user)
+        await clear_cache_for_get_direct_chats(cache=cache, user=recipient_user)
 
     return chat
 
